@@ -1,0 +1,100 @@
+---
+title: "Practical machine learning assignment"
+author: "CHB"
+date: "8/12/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Practical machine learning
+
+### Prediction assigment writeup
+
+First I will load in the training data and take a brief look at it. I suppressed the output in the html so that it doesn't take up a lot of space.
+
+```{r}
+library(caret)
+training_data <- read.csv("pml-training.csv")
+#head(training_data)
+#summary(training_data)
+#names(training_data)
+```
+
+
+In this chunk I will remove variables from the dataset.
+1. Remove columns that are not predictors.
+  - This I do since they do not contain information that should be used in the prediction (index, names, time and window variables)
+2. Remove near zero variance predictors.
+  - This I do since these predictors likely bring little value to a prediction model. Removing these will thus make the model less complex and easier to train.
+3. Remove variables with large amounts of NA values.
+  NA values can be imputed, but for the variables in this dataset, NA values are very prominent (>97% missing values) so I chose to exclude these variables instead.
+
+```{r}
+#remove the first seven columns from the dataset as these are not predictors (index, names, time and window variables)
+training_data <- training_data[,-c(1:7)]
+
+#check if there are any low variance predictors in the dataset that perhaps should be removed
+nzv_preds <- nearZeroVar(training_data, saveMetrics = T)
+#nzv_preds
+#remove nzv-predictors
+training_data <- training_data[,-c(which(nzv_preds$nzv))]
+#several variables have NA-values, check how many per column 
+#apply(is.na(training_data),2,sum)
+#a large proportion (19216/19622 of observations) are NA in many of the variables, remove these
+training_data <- training_data[,-c(as.vector(which(apply(is.na(training_data),2,sum) > 1)))]
+
+```
+
+In this chunk I will split the data into a training and test set.
+Then I will train a gradient boosting machine model, using 10-fold cross validation.
+Reason for selecting gbm-model:
+I tested various model-types and gbm gave me the best results on the training data.
+(Note, I was not able to run random forests on the data since my computer is too old and slow).
+
+```{r}
+#split the data into a training and test set (the test set supplied in the csv file will function as validation)
+set.seed(3266)
+inTrain <- createDataPartition(training_data$classe, p = 0.75, list = F)
+
+training_data_train <- training_data[inTrain,]
+training_data_test <- training_data[-inTrain,]
+
+#will perform 10-fold cross validation, set this by using trainControl
+modelControl <- trainControl(method = "cv", number = 10)
+
+#set a seed
+set.seed(13415)
+#train the model using a gradient boosting machine 
+model <- train(classe ~ ., method = "gbm", trControl = modelControl, data = training_data_train, verbose = F)
+#print the model
+print(model)
+
+```
+
+The model seems to fit the data nicely in the training data. Now I will test the model in the test data that I put aside from the training.csv file to check the out of sample error. 
+
+
+```{r}
+#now check the predictions on the test data that was separated out from the original training data
+predicted_training_test_classes <- predict(model, training_data_test)
+confusionMatrix(predicted_training_test_classes,as.factor(training_data_test$classe))
+```
+
+The accuracy is 0.96, so the expected out of sample error is 0.04.
+I believe this is good enough to proceed with the trained model to predict the classes in the testing.csv file.
+Now I'll read in the testing.csv file and predict the classes for the 20 observations.
+
+```{r}
+#now read in validation data and predict the 20 classes for the prediction quiz
+validation_data <- read.csv("pml-testing.csv")
+
+predictions_validation_data <- predict(model,validation_data)
+print(predictions_validation_data)
+
+```
+
+
+
